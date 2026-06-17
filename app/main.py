@@ -1,8 +1,9 @@
 """Application entrypoint and FastAPI factory.
 
-This module wires together configuration, logging, and routing. Heavier
-subsystems (Redis vector store, providers, metrics) are attached in later
-phases via the application lifespan.
+This module wires together configuration, logging, the semantic cache, and the
+OpenAI-compatible routing surface. Long-lived resources (embedding client, Redis
+vector store) are created in the application lifespan and exposed on
+``app.state`` for dependency injection.
 """
 
 from __future__ import annotations
@@ -12,19 +13,63 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app import __version__
+from app.api.chat import router as chat_router
+from app.cache.memory_store import InMemoryVectorStore
+from app.cache.semantic_cache import SemanticCache
+from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
+from app.embeddings import build_embedding_service
+from app.proxy.echo import EchoCompleter
+from app.proxy.service import ProxyService
 
 logger = get_logger(__name__)
 
 
+def _build_store(settings: Settings) -> VectorStore:
+    if settings.vector_backend == "memory":
+        return InMemoryVectorStore()
+    return RedisVectorStore(
+        redis_url=str(settings.redis_url),
+        index_name=settings.cache_index_name,
+        dimensions=settings.embedding_dimensions,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage startup/shutdown of long-lived resources."""
     settings: Settings = app.state.settings
-    logger.info("service.startup", env=settings.app_env, version=__version__)
-    yield
-    logger.info("service.shutdown")
+
+    embeddings = build_embedding_service(settings)
+    store = _build_store(settings)
+    await store.ensure_index()
+    cache = SemanticCache(
+        embedding_service=embeddings,
+        store=store,
+        threshold=settings.similarity_threshold,
+        near_miss_window=settings.near_miss_window,
+    )
+    # Provider wiring is replaced by the real router in Phase 2; the echo
+    # completer keeps the proxy runnable without credentials.
+    proxy = ProxyService(
+        cache=cache,
+        completer=EchoCompleter(),
+        default_ttl_seconds=settings.default_ttl_seconds,
+    )
+
+    app.state.embeddings = embeddings
+    app.state.store = store
+    app.state.cache = cache
+    app.state.proxy = proxy
+
+    logger.info("service.startup", env=settings.app_env, version=__version__,
+                backend=settings.vector_backend)
+    try:
+        yield
+    finally:
+        await embeddings.aclose()
+        await store.aclose()
+        logger.info("service.shutdown")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -39,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.include_router(chat_router)
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:
@@ -46,7 +92,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
-        """Liveness probe — the process is up and serving."""
         return {"status": "ok"}
 
     return app

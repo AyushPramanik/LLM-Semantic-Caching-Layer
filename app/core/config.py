@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: RedisDsn = Field(default="redis://localhost:6379/0")
     cache_index_name: str = "semantic_cache"
+    vector_backend: Literal["redis", "memory"] = "redis"
 
     # --- Embeddings ---
     embedding_provider: Literal["openai", "fake"] = "openai"
