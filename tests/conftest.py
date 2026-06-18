@@ -25,6 +25,7 @@ def settings():
         app_env="test",
         embedding_provider="fake",
         vector_backend="memory",
+        completer_backend="echo",
         similarity_threshold=0.95,
         redis_url="redis://localhost:6379/15",
     )

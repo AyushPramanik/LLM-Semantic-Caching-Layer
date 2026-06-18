@@ -25,9 +25,13 @@ logger = get_logger(__name__)
 
 
 class Completer(Protocol):
-    """Anything that can turn a chat request into a completion (a provider)."""
+    """Anything that can turn a chat request into a completion (a provider).
 
-    name: str
+    ``resolve_provider`` lets a router report which concrete provider will serve
+    a given request, so the cache namespace reflects the real upstream.
+    """
+
+    def resolve_provider(self, request: ChatCompletionRequest) -> str: ...
 
     async def complete(self, request: ChatCompletionRequest) -> ChatCompletionResponse: ...
 
@@ -65,10 +69,12 @@ class ProxyService:
         self._ttl_policy = ttl_policy
         self._threshold_policy = threshold_policy
 
-    def _signature(self, request: ChatCompletionRequest, tenant: str) -> RequestSignature:
+    def _signature(
+        self, request: ChatCompletionRequest, tenant: str, provider: str
+    ) -> RequestSignature:
         return RequestSignature(
             model=request.model,
-            provider=self._completer.name,
+            provider=provider,
             system_prompt=request.system_prompt(),
             temperature=request.temperature,
             max_tokens=request.max_tokens,
@@ -78,7 +84,8 @@ class ProxyService:
     async def complete(
         self, request: ChatCompletionRequest, *, tenant: str = "default"
     ) -> ProxyResult:
-        signature = self._signature(request, tenant)
+        provider = self._completer.resolve_provider(request)
+        signature = self._signature(request, tenant, provider)
         prompt = request.latest_user_prompt()
         threshold = self._threshold_policy(request) if self._threshold_policy else None
 
@@ -91,7 +98,7 @@ class ProxyService:
                 cache_status=CacheStatus.HIT,
                 similarity_score=lookup.score,
                 cache_latency_ms=lookup.latency_ms,
-                provider=self._completer.name,
+                provider=provider,
             )
 
         # MISS — forward upstream and cache the successful response.
@@ -111,7 +118,7 @@ class ProxyService:
             cache_status=CacheStatus.MISS,
             similarity_score=lookup.score,
             cache_latency_ms=lookup.latency_ms,
-            provider=self._completer.name,
+            provider=provider,
         )
 
     def _resolve_policy(

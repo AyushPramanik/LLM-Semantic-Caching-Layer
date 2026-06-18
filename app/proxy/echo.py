@@ -19,6 +19,9 @@ from app.models.chat import (
 class EchoCompleter:
     name = "echo"
 
+    def resolve_provider(self, request: ChatCompletionRequest) -> str:
+        return self.name
+
     async def complete(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
         prompt = request.latest_user_prompt()
         completion = f"[echo:{request.model}] {prompt}"

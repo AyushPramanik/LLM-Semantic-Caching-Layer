@@ -20,8 +20,9 @@ from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.embeddings import build_embedding_service
+from app.providers import build_router
 from app.proxy.echo import EchoCompleter
-from app.proxy.service import ProxyService
+from app.proxy.service import Completer, ProxyService
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,12 @@ def _build_store(settings: Settings) -> VectorStore:
         index_name=settings.cache_index_name,
         dimensions=settings.embedding_dimensions,
     )
+
+
+def _build_completer(settings: Settings) -> Completer:
+    if settings.completer_backend == "echo":
+        return EchoCompleter()
+    return build_router(settings)
 
 
 @asynccontextmanager
@@ -49,11 +56,9 @@ async def lifespan(app: FastAPI):
         threshold=settings.similarity_threshold,
         near_miss_window=settings.near_miss_window,
     )
-    # Provider wiring is replaced by the real router in Phase 2; the echo
-    # completer keeps the proxy runnable without credentials.
     proxy = ProxyService(
         cache=cache,
-        completer=EchoCompleter(),
+        completer=_build_completer(settings),
         default_ttl_seconds=settings.default_ttl_seconds,
     )
 

@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     validation_sample_rate: float = 0.02
 
     # --- Providers ---
+    completer_backend: Literal["router", "echo"] = "router"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     anthropic_api_key: str = ""
