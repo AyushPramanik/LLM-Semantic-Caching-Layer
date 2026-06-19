@@ -13,6 +13,7 @@ service stays focused and the policy layers (Phase 3) can evolve independently.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -20,6 +21,7 @@ from app.cache.namespace import RequestSignature
 from app.cache.semantic_cache import CacheStatus, SemanticCache
 from app.core.logging import get_logger
 from app.models.chat import ChatCompletionRequest, ChatCompletionResponse
+from app.proxy.streaming import StreamAssembler, response_to_sse
 
 logger = get_logger(__name__)
 
@@ -34,6 +36,8 @@ class Completer(Protocol):
     def resolve_provider(self, request: ChatCompletionRequest) -> str: ...
 
     async def complete(self, request: ChatCompletionRequest) -> ChatCompletionResponse: ...
+
+    def stream(self, request: ChatCompletionRequest) -> AsyncIterator[bytes]: ...
 
 
 # Optional policy hooks. Defaults keep behavior simple until Phase 3 wires real
@@ -51,6 +55,15 @@ class ProxyResult:
     similarity_score: float
     cache_latency_ms: float
     provider: str
+
+
+@dataclass(slots=True)
+class StreamResult:
+    """A streaming response: cache headers plus the SSE byte generator."""
+
+    headers: dict[str, str]
+    body: AsyncIterator[bytes]
+    cache_status: CacheStatus
 
 
 class ProxyService:
@@ -120,6 +133,76 @@ class ProxyService:
             cache_latency_ms=lookup.latency_ms,
             provider=provider,
         )
+
+    async def stream(
+        self, request: ChatCompletionRequest, *, tenant: str = "default"
+    ) -> StreamResult:
+        """Streaming variant of :meth:`complete`.
+
+        On HIT, the cached response is re-emitted as SSE immediately. On MISS the
+        upstream stream is forwarded chunk-by-chunk while being reassembled; the
+        full response is cached only if the stream completes successfully. Partial
+        or failed generations are never cached.
+        """
+        provider = self._completer.resolve_provider(request)
+        signature = self._signature(request, tenant, provider)
+        prompt = request.latest_user_prompt()
+        threshold = self._threshold_policy(request) if self._threshold_policy else None
+        lookup = await self._cache.lookup(signature, prompt, threshold=threshold)
+
+        if lookup.is_hit and lookup.match is not None:
+            cached = ChatCompletionResponse.model_validate(lookup.match.entry.response)
+
+            async def hit_body() -> AsyncIterator[bytes]:
+                for chunk in response_to_sse(cached):
+                    yield chunk
+
+            return StreamResult(
+                headers=self._headers(CacheStatus.HIT, lookup.score, lookup.latency_ms, provider),
+                body=hit_body(),
+                cache_status=CacheStatus.HIT,
+            )
+
+        async def miss_body() -> AsyncIterator[bytes]:
+            assembler = StreamAssembler(request.model)
+            try:
+                async for chunk in self._completer.stream(request):
+                    assembler.push(chunk)
+                    yield chunk
+            except Exception:
+                logger.warning("stream.failed", provider=provider, model=request.model)
+                raise  # never cache a failed/partial generation
+            if not assembler.completed:
+                logger.warning("stream.incomplete", provider=provider)
+                return
+            response = assembler.build_response()
+            ttl_seconds, tags = self._resolve_policy(request, response)
+            await self._cache.store_response(
+                signature,
+                prompt,
+                response.model_dump(),
+                ttl_seconds=ttl_seconds,
+                tags=tags,
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+            )
+
+        return StreamResult(
+            headers=self._headers(CacheStatus.MISS, lookup.score, lookup.latency_ms, provider),
+            body=miss_body(),
+            cache_status=CacheStatus.MISS,
+        )
+
+    @staticmethod
+    def _headers(
+        status: CacheStatus, score: float, latency_ms: float, provider: str
+    ) -> dict[str, str]:
+        return {
+            "X-Cache-Status": status.value,
+            "X-Similarity-Score": f"{score:.4f}",
+            "X-Cache-Latency": f"{latency_ms:.3f}ms",
+            "X-Provider": provider,
+        }
 
     def _resolve_policy(
         self, request: ChatCompletionRequest, response: ChatCompletionResponse

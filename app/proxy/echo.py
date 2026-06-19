@@ -7,6 +7,8 @@ are configured. It is replaced by the real provider router in production wiring.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from app.models.chat import (
     ChatCompletionChoice,
     ChatCompletionRequest,
@@ -42,3 +44,10 @@ class EchoCompleter:
                 total_tokens=prompt_tokens + completion_tokens,
             ),
         )
+
+    async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[bytes]:
+        from app.proxy.streaming import response_to_sse
+
+        response = await self.complete(request)
+        for chunk in response_to_sse(response):
+            yield chunk

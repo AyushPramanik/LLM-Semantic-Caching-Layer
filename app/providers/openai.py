@@ -6,6 +6,8 @@ authenticated pass-through with retry/backoff on transient failures.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -40,3 +42,20 @@ class OpenAIProvider(ChatProvider):
                 provider=self.name,
             )
         return ChatCompletionResponse.model_validate(resp.json())
+
+    async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[bytes]:
+        payload = request.upstream_payload()
+        payload["stream"] = True
+        async with self._client.stream(
+            "POST", "/chat/completions", json=payload, headers=self._headers
+        ) as resp:
+            if resp.status_code >= 400:
+                body = await resp.aread()
+                raise ProviderError(
+                    f"openai stream returned {resp.status_code}: {body[:200]!r}",
+                    status_code=resp.status_code,
+                    provider=self.name,
+                )
+            async for chunk in resp.aiter_bytes():
+                if chunk:
+                    yield chunk

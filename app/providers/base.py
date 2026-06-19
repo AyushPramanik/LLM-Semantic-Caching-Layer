@@ -39,9 +39,17 @@ class ChatProvider(abc.ABC):
         """Return a full (non-streamed) completion."""
 
     async def stream(self, request: ChatCompletionRequest) -> AsyncIterator[bytes]:
-        """Yield raw SSE chunks from the provider. Overridden in Phase 2."""
-        raise NotImplementedError(f"{self.name} does not implement streaming")
-        yield b""  # pragma: no cover
+        """Yield SSE chunks for the completion.
+
+        The default implementation buffers a full completion and re-emits it as a
+        single logical SSE stream. Providers that support native token streaming
+        (OpenAI, Ollama) override this with a true pass-through.
+        """
+        from app.proxy.streaming import response_to_sse
+
+        response = await self.complete(request)
+        for chunk in response_to_sse(response):
+            yield chunk
 
     async def aclose(self) -> None:
         await self._client.aclose()

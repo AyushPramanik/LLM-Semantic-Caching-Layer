@@ -66,6 +66,12 @@ class ProviderRouter:
         logger.info("router.dispatch", model=request.model, provider=provider.name)
         return await provider.complete(request)
 
+    async def stream(self, request: ChatCompletionRequest):
+        provider = self._provider_for(request)
+        logger.info("router.dispatch.stream", model=request.model, provider=provider.name)
+        async for chunk in provider.stream(request):
+            yield chunk
+
     async def aclose(self) -> None:
         for provider in self._providers.values():
             await provider.aclose()
