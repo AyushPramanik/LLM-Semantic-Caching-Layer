@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # --- Semantic cache ---
     similarity_threshold: float = 0.95
     default_ttl_seconds: int = 86_400
+    short_ttl_seconds: int = 3_600
     near_miss_window: float = 0.05
 
     # --- Cache validation (shadow replay) ---

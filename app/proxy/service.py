@@ -117,15 +117,16 @@ class ProxyService:
         # MISS — forward upstream and cache the successful response.
         response = await self._completer.complete(request)
         ttl_seconds, tags = self._resolve_policy(request, response)
-        await self._cache.store_response(
-            signature,
-            prompt,
-            response.model_dump(),
-            ttl_seconds=ttl_seconds,
-            tags=tags,
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens,
-        )
+        if ttl_seconds > 0:
+            await self._cache.store_response(
+                signature,
+                prompt,
+                response.model_dump(),
+                ttl_seconds=ttl_seconds,
+                tags=tags,
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+            )
         return ProxyResult(
             response=response,
             cache_status=CacheStatus.MISS,
@@ -177,15 +178,16 @@ class ProxyService:
                 return
             response = assembler.build_response()
             ttl_seconds, tags = self._resolve_policy(request, response)
-            await self._cache.store_response(
-                signature,
-                prompt,
-                response.model_dump(),
-                ttl_seconds=ttl_seconds,
-                tags=tags,
-                prompt_tokens=response.usage.prompt_tokens,
-                completion_tokens=response.usage.completion_tokens,
-            )
+            if ttl_seconds > 0:
+                await self._cache.store_response(
+                    signature,
+                    prompt,
+                    response.model_dump(),
+                    ttl_seconds=ttl_seconds,
+                    tags=tags,
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                )
 
         return StreamResult(
             headers=self._headers(CacheStatus.MISS, lookup.score, lookup.latency_ms, provider),
