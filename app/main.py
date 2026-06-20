@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app import __version__
+from app.api.cache import router as cache_router
 from app.api.chat import router as chat_router
 from app.cache.memory_store import InMemoryVectorStore
 from app.cache.semantic_cache import SemanticCache
@@ -96,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.include_router(chat_router)
+    app.include_router(cache_router)
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:

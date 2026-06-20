@@ -49,8 +49,18 @@ class VectorStore(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def delete_by(self, *, namespace: str | None = None, **filters: str) -> int:
-        """Delete entries matching the given field filters; returns count."""
+    async def delete(
+        self,
+        *,
+        model: str | None = None,
+        system_prompt_hash: str | None = None,
+        tag: str | None = None,
+    ) -> int:
+        """Delete entries matching any provided filter; returns count removed."""
+
+    @abc.abstractmethod
+    async def clear(self) -> int:
+        """Delete every entry in the index; returns count removed."""
 
     @abc.abstractmethod
     async def count(self) -> int:
@@ -159,14 +169,28 @@ class RedisVectorStore(VectorStore):
         entry.hit_count += 1
         await self._client.hset(self._key(entry_id), "data", orjson.dumps(entry.model_dump()))
 
-    async def delete_by(self, *, namespace: str | None = None, **filters: str) -> int:
+    async def delete(
+        self,
+        *,
+        model: str | None = None,
+        system_prompt_hash: str | None = None,
+        tag: str | None = None,
+    ) -> int:
         clauses = []
-        if namespace:
-            clauses.append(f"@namespace:{{{_escape_tag(namespace)}}}")
-        for field, value in filters.items():
-            clauses.append(f"@{field}:{{{_escape_tag(value)}}}")
-        query_str = " ".join(clauses) if clauses else "*"
+        if model:
+            clauses.append(f"@model:{{{_escape_tag(model)}}}")
+        if system_prompt_hash:
+            clauses.append(f"@system_prompt_hash:{{{_escape_tag(system_prompt_hash)}}}")
+        if tag:
+            clauses.append(f"@tags:{{{_escape_tag(tag)}}}")
+        if not clauses:
+            return 0
+        return await self._delete_matching(" ".join(clauses))
 
+    async def clear(self) -> int:
+        return await self._delete_matching("*")
+
+    async def _delete_matching(self, query_str: str) -> int:
         q = Query(query_str).return_fields("id").paging(0, 10_000).dialect(2)
         res = await self._client.ft(self._index).search(q)
         keys = [doc.id for doc in res.docs]

@@ -9,11 +9,16 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from app.cache.store import VectorStore
 from app.proxy.service import ProxyService
 
 
 def get_proxy(request: Request) -> ProxyService:
     return request.app.state.proxy
+
+
+def get_store(request: Request) -> VectorStore:
+    return request.app.state.store
 
 
 def get_tenant(request: Request) -> str:

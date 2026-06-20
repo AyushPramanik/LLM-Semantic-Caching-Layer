@@ -60,19 +60,34 @@ class InMemoryVectorStore(VectorStore):
         if entry is not None:
             entry.hit_count += 1
 
-    async def delete_by(self, *, namespace: str | None = None, **filters: str) -> int:
-        to_delete = []
-        for entry in self._entries.values():
-            if namespace is not None and entry.namespace != namespace:
-                continue
-            if all(getattr(entry, field, None) == value for field, value in filters.items()):
-                if namespace is not None or filters:
-                    to_delete.append(entry.id)
-        if namespace is None and not filters:  # delete all
-            to_delete = list(self._entries.keys())
+    async def delete(
+        self,
+        *,
+        model: str | None = None,
+        system_prompt_hash: str | None = None,
+        tag: str | None = None,
+    ) -> int:
+        if model is None and system_prompt_hash is None and tag is None:
+            return 0
+
+        def matches(entry) -> bool:
+            if model is not None and entry.model != model:
+                return False
+            if system_prompt_hash is not None and entry.system_prompt_hash != system_prompt_hash:
+                return False
+            if tag is not None and tag not in entry.tags:
+                return False
+            return True
+
+        to_delete = [eid for eid, entry in self._entries.items() if matches(entry)]
         for entry_id in to_delete:
             self._entries.pop(entry_id, None)
         return len(to_delete)
+
+    async def clear(self) -> int:
+        count = len(self._entries)
+        self._entries.clear()
+        return count
 
     async def count(self) -> int:
         return len(self._entries)
