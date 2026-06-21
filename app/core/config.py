@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     default_ttl_seconds: int = 86_400
     short_ttl_seconds: int = 3_600
     near_miss_window: float = 0.05
+    adaptive_thresholds_enabled: bool = True
 
     # --- Cache validation (shadow replay) ---
     validation_sample_rate: float = 0.02

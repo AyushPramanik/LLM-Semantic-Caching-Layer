@@ -22,7 +22,12 @@ from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.embeddings import build_embedding_service
-from app.policies import TtlClassifier, build_ttl_policy
+from app.policies import (
+    AdaptiveThresholdEngine,
+    TtlClassifier,
+    build_threshold_policy,
+    build_ttl_policy,
+)
 from app.providers import build_router
 from app.proxy.echo import EchoCompleter
 from app.proxy.service import Completer, ProxyService
@@ -63,12 +68,20 @@ async def lifespan(app: FastAPI):
         long_ttl_seconds=settings.default_ttl_seconds,
         short_ttl_seconds=settings.short_ttl_seconds,
     )
+    threshold_engine = AdaptiveThresholdEngine()
+    threshold_policy = (
+        build_threshold_policy(threshold_engine)
+        if settings.adaptive_thresholds_enabled
+        else None
+    )
     proxy = ProxyService(
         cache=cache,
         completer=_build_completer(settings),
         default_ttl_seconds=settings.default_ttl_seconds,
         ttl_policy=build_ttl_policy(ttl_classifier),
+        threshold_policy=threshold_policy,
     )
+    app.state.threshold_engine = threshold_engine
 
     app.state.embeddings = embeddings
     app.state.store = store
