@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from app.cache.store import VectorStore
+from app.embeddings.base import EmbeddingService
 from app.proxy.service import ProxyService
 
 
@@ -19,6 +20,10 @@ def get_proxy(request: Request) -> ProxyService:
 
 def get_store(request: Request) -> VectorStore:
     return request.app.state.store
+
+
+def get_embeddings(request: Request) -> EmbeddingService:
+    return request.app.state.embeddings
 
 
 def get_tenant(request: Request) -> str:
