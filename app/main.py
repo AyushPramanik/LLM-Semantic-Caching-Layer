@@ -16,12 +16,14 @@ from app import __version__
 from app.api.analytics import router as analytics_router
 from app.api.cache import router as cache_router
 from app.api.chat import router as chat_router
+from app.api.metrics import router as metrics_router
 from app.cache.memory_store import InMemoryVectorStore
 from app.cache.semantic_cache import SemanticCache
 from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.embeddings import build_embedding_service
+from app.monitoring.metrics import CacheMetrics
 from app.policies import (
     AdaptiveThresholdEngine,
     TtlClassifier,
@@ -74,14 +76,18 @@ async def lifespan(app: FastAPI):
         if settings.adaptive_thresholds_enabled
         else None
     )
+    # A per-app registry keeps metrics isolated (important for tests).
+    metrics = CacheMetrics()
     proxy = ProxyService(
         cache=cache,
         completer=_build_completer(settings),
         default_ttl_seconds=settings.default_ttl_seconds,
         ttl_policy=build_ttl_policy(ttl_classifier),
         threshold_policy=threshold_policy,
+        metrics=metrics,
     )
     app.state.threshold_engine = threshold_engine
+    app.state.metrics = metrics
 
     app.state.embeddings = embeddings
     app.state.store = store
@@ -113,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router)
     app.include_router(cache_router)
     app.include_router(analytics_router)
+    app.include_router(metrics_router)
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:

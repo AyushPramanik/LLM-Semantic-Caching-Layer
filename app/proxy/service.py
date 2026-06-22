@@ -13,6 +13,7 @@ service stays focused and the policy layers (Phase 3) can evolve independently.
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
@@ -21,6 +22,7 @@ from app.cache.namespace import RequestSignature
 from app.cache.semantic_cache import CacheStatus, SemanticCache
 from app.core.logging import get_logger
 from app.models.chat import ChatCompletionRequest, ChatCompletionResponse
+from app.monitoring.metrics import MetricsSink, NoOpMetrics
 from app.proxy.streaming import StreamAssembler, response_to_sse
 
 logger = get_logger(__name__)
@@ -75,12 +77,14 @@ class ProxyService:
         default_ttl_seconds: int = 86_400,
         ttl_policy=None,
         threshold_policy=None,
+        metrics: MetricsSink | None = None,
     ) -> None:
         self._cache = cache
         self._completer = completer
         self._default_ttl = default_ttl_seconds
         self._ttl_policy = ttl_policy
         self._threshold_policy = threshold_policy
+        self._metrics: MetricsSink = metrics or NoOpMetrics()
 
     def _signature(
         self, request: ChatCompletionRequest, tenant: str, provider: str
@@ -103,9 +107,15 @@ class ProxyService:
         threshold = self._threshold_policy(request) if self._threshold_policy else None
 
         lookup = await self._cache.lookup(signature, prompt, threshold=threshold)
+        self._metrics.record_lookup(
+            lookup.status.value, provider, request.model, lookup.score, lookup.latency_ms
+        )
 
         if lookup.is_hit and lookup.match is not None:
             cached = ChatCompletionResponse.model_validate(lookup.match.entry.response)
+            self._metrics.record_savings(
+                request.model, cached.usage.prompt_tokens, cached.usage.completion_tokens
+            )
             return ProxyResult(
                 response=cached,
                 cache_status=CacheStatus.HIT,
@@ -115,7 +125,9 @@ class ProxyService:
             )
 
         # MISS — forward upstream and cache the successful response.
+        started = time.perf_counter()
         response = await self._completer.complete(request)
+        self._metrics.record_provider_latency(provider, (time.perf_counter() - started) * 1000.0)
         ttl_seconds, tags = self._resolve_policy(request, response)
         if ttl_seconds > 0:
             await self._cache.store_response(
@@ -150,9 +162,15 @@ class ProxyService:
         prompt = request.latest_user_prompt()
         threshold = self._threshold_policy(request) if self._threshold_policy else None
         lookup = await self._cache.lookup(signature, prompt, threshold=threshold)
+        self._metrics.record_lookup(
+            lookup.status.value, provider, request.model, lookup.score, lookup.latency_ms
+        )
 
         if lookup.is_hit and lookup.match is not None:
             cached = ChatCompletionResponse.model_validate(lookup.match.entry.response)
+            self._metrics.record_savings(
+                request.model, cached.usage.prompt_tokens, cached.usage.completion_tokens
+            )
 
             async def hit_body() -> AsyncIterator[bytes]:
                 for chunk in response_to_sse(cached):
