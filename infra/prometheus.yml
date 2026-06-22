@@ -1,0 +1,16 @@
+# Prometheus scrape configuration for the semantic caching layer.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: semantic-cache-layer
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:8000"]
+        labels:
+          service: semantic-cache-layer
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
