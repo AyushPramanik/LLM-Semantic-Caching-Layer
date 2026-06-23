@@ -13,6 +13,7 @@ service stays focused and the policy layers (Phase 3) can evolve independently.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -79,6 +80,7 @@ class ProxyService:
         threshold_policy=None,
         metrics: MetricsSink | None = None,
         near_miss_tracker=None,
+        validator=None,
     ) -> None:
         self._cache = cache
         self._completer = completer
@@ -87,6 +89,23 @@ class ProxyService:
         self._threshold_policy = threshold_policy
         self._metrics: MetricsSink = metrics or NoOpMetrics()
         self._near_miss = near_miss_tracker
+        self._validator = validator
+
+    def _maybe_validate(self, request: ChatCompletionRequest, cached: ChatCompletionResponse) -> None:
+        """Fire-and-forget shadow replay of a sampled cache hit (off hot path)."""
+        if self._validator is None or not self._validator.should_validate():
+            return
+        try:
+            asyncio.create_task(self._safe_validate(request, cached))
+        except RuntimeError:
+            # No running loop (e.g. sync context) — skip rather than block.
+            pass
+
+    async def _safe_validate(self, request, cached) -> None:
+        try:
+            await self._validator.validate(request, cached)
+        except Exception:  # noqa: BLE001 - validation must never break serving
+            logger.warning("validation.error", model=request.model)
 
     def _record_near_miss(self, lookup, signature, prompt: str, threshold: float | None) -> None:
         if self._near_miss is not None and lookup.near_miss:
@@ -128,6 +147,7 @@ class ProxyService:
             self._metrics.record_savings(
                 request.model, cached.usage.prompt_tokens, cached.usage.completion_tokens
             )
+            self._maybe_validate(request, cached)
             return ProxyResult(
                 response=cached,
                 cache_status=CacheStatus.HIT,

@@ -53,7 +53,9 @@ class Settings(BaseSettings):
     adaptive_thresholds_enabled: bool = True
 
     # --- Cache validation (shadow replay) ---
+    validation_enabled: bool = True
     validation_sample_rate: float = 0.02
+    validation_drift_threshold: float = 0.90
 
     # --- Providers ---
     completer_backend: Literal["router", "echo"] = "router"

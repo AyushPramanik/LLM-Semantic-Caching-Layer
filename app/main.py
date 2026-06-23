@@ -23,6 +23,7 @@ from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.analytics.near_miss import NearMissTracker
+from app.analytics.validation import CacheValidator
 from app.embeddings import build_embedding_service
 from app.monitoring.metrics import CacheMetrics
 from app.policies import (
@@ -80,18 +81,32 @@ async def lifespan(app: FastAPI):
     # A per-app registry keeps metrics isolated (important for tests).
     metrics = CacheMetrics()
     near_miss_tracker = NearMissTracker(window=settings.near_miss_window)
+    completer = _build_completer(settings)
+    validator = (
+        CacheValidator(
+            embedding_service=embeddings,
+            completer=completer,
+            sample_rate=settings.validation_sample_rate,
+            drift_threshold=settings.validation_drift_threshold,
+            metrics=metrics,
+        )
+        if settings.validation_enabled
+        else None
+    )
     proxy = ProxyService(
         cache=cache,
-        completer=_build_completer(settings),
+        completer=completer,
         default_ttl_seconds=settings.default_ttl_seconds,
         ttl_policy=build_ttl_policy(ttl_classifier),
         threshold_policy=threshold_policy,
         metrics=metrics,
         near_miss_tracker=near_miss_tracker,
+        validator=validator,
     )
     app.state.threshold_engine = threshold_engine
     app.state.metrics = metrics
     app.state.near_miss_tracker = near_miss_tracker
+    app.state.validator = validator
 
     app.state.embeddings = embeddings
     app.state.store = store

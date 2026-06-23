@@ -12,6 +12,7 @@ from app.analytics.threshold import (
     ThresholdTestCase,
 )
 from app.analytics.near_miss import NearMissReport, NearMissTracker
+from app.analytics.validation import CacheValidator, ValidationStats
 from app.api.dependencies import get_embeddings
 from app.embeddings.base import EmbeddingService
 from app.policies.threshold_engine import AdaptiveThresholdEngine, ThresholdCategory
@@ -32,6 +33,23 @@ async def near_misses(
     tracker: NearMissTracker = Depends(get_near_miss_tracker),
 ) -> NearMissReport:
     return tracker.report()
+
+
+def get_validator(request: Request) -> CacheValidator | None:
+    return getattr(request.app.state, "validator", None)
+
+
+@router.get("/validation", response_model=ValidationStats)
+async def validation_stats(
+    validator: CacheValidator | None = Depends(get_validator),
+) -> ValidationStats:
+    if validator is None:
+        return ValidationStats(
+            validations=0, drift_count=0, false_hit_count=0,
+            cache_validation_accuracy=1.0, semantic_drift_rate=0.0, false_hit_rate=0.0,
+            sample_rate=0.0, drift_threshold=0.0,
+        )
+    return validator.stats()
 
 
 class ThresholdTestRequest(BaseModel):

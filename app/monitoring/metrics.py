@@ -42,6 +42,8 @@ class MetricsSink(Protocol):
     def record_savings(self, model: str, prompt_tokens: int, completion_tokens: int) -> None: ...
     def record_eviction(self, count: int = 1) -> None: ...
     def set_cache_size(self, size: int) -> None: ...
+    def record_validation(self, accuracy: float, drift_rate: float,
+                          false_hit_rate: float) -> None: ...
 
 
 class NoOpMetrics:
@@ -52,6 +54,7 @@ class NoOpMetrics:
     def record_savings(self, *args, **kwargs) -> None: ...
     def record_eviction(self, *args, **kwargs) -> None: ...
     def set_cache_size(self, *args, **kwargs) -> None: ...
+    def record_validation(self, *args, **kwargs) -> None: ...
 
 
 _LATENCY_BUCKETS = (1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500)
@@ -95,6 +98,15 @@ class CacheMetrics:
             registry=self.registry)
         self.requests_by_model = Counter(
             "requests_by_model", "Requests grouped by model", ["model"], registry=self.registry)
+        self.validation_accuracy = Gauge(
+            "cache_validation_accuracy", "Share of validated hits that still match",
+            registry=self.registry)
+        self.semantic_drift_rate = Gauge(
+            "semantic_drift_rate", "Share of validated hits showing semantic drift",
+            registry=self.registry)
+        self.false_hit_rate = Gauge(
+            "false_hit_rate", "Share of validated hits that were effectively wrong",
+            registry=self.registry)
 
         self._hits = 0
         self._total = 0
@@ -128,6 +140,13 @@ class CacheMetrics:
 
     def set_cache_size(self, size: int) -> None:
         self.cache_size.set(size)
+
+    def record_validation(
+        self, accuracy: float, drift_rate: float, false_hit_rate: float
+    ) -> None:
+        self.validation_accuracy.set(accuracy)
+        self.semantic_drift_rate.set(drift_rate)
+        self.false_hit_rate.set(false_hit_rate)
 
     def render(self) -> bytes:
         return generate_latest(self.registry)
