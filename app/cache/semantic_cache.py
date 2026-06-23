@@ -63,6 +63,10 @@ class SemanticCache:
         self._near_miss_window = near_miss_window
         self._top_k = top_k
 
+    @property
+    def default_threshold(self) -> float:
+        return self._threshold
+
     async def lookup(
         self,
         signature: RequestSignature,

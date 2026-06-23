@@ -78,6 +78,7 @@ class ProxyService:
         ttl_policy=None,
         threshold_policy=None,
         metrics: MetricsSink | None = None,
+        near_miss_tracker=None,
     ) -> None:
         self._cache = cache
         self._completer = completer
@@ -85,6 +86,16 @@ class ProxyService:
         self._ttl_policy = ttl_policy
         self._threshold_policy = threshold_policy
         self._metrics: MetricsSink = metrics or NoOpMetrics()
+        self._near_miss = near_miss_tracker
+
+    def _record_near_miss(self, lookup, signature, prompt: str, threshold: float | None) -> None:
+        if self._near_miss is not None and lookup.near_miss:
+            self._near_miss.record(
+                score=lookup.score,
+                threshold=threshold if threshold is not None else self._cache.default_threshold,
+                namespace=signature.namespace(),
+                prompt=prompt,
+            )
 
     def _signature(
         self, request: ChatCompletionRequest, tenant: str, provider: str
@@ -110,6 +121,7 @@ class ProxyService:
         self._metrics.record_lookup(
             lookup.status.value, provider, request.model, lookup.score, lookup.latency_ms
         )
+        self._record_near_miss(lookup, signature, prompt, threshold)
 
         if lookup.is_hit and lookup.match is not None:
             cached = ChatCompletionResponse.model_validate(lookup.match.entry.response)
@@ -165,6 +177,7 @@ class ProxyService:
         self._metrics.record_lookup(
             lookup.status.value, provider, request.model, lookup.score, lookup.latency_ms
         )
+        self._record_near_miss(lookup, signature, prompt, threshold)
 
         if lookup.is_hit and lookup.match is not None:
             cached = ChatCompletionResponse.model_validate(lookup.match.entry.response)

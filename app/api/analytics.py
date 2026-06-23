@@ -11,6 +11,7 @@ from app.analytics.threshold import (
     ThresholdReport,
     ThresholdTestCase,
 )
+from app.analytics.near_miss import NearMissReport, NearMissTracker
 from app.api.dependencies import get_embeddings
 from app.embeddings.base import EmbeddingService
 from app.policies.threshold_engine import AdaptiveThresholdEngine, ThresholdCategory
@@ -20,6 +21,17 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 def get_threshold_engine(request: Request) -> AdaptiveThresholdEngine:
     return request.app.state.threshold_engine
+
+
+def get_near_miss_tracker(request: Request) -> NearMissTracker:
+    return request.app.state.near_miss_tracker
+
+
+@router.get("/near-misses", response_model=NearMissReport)
+async def near_misses(
+    tracker: NearMissTracker = Depends(get_near_miss_tracker),
+) -> NearMissReport:
+    return tracker.report()
 
 
 class ThresholdTestRequest(BaseModel):
