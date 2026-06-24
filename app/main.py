@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.api.analytics import router as analytics_router
@@ -146,7 +147,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
+        """Liveness probe — the process is up and serving."""
         return {"status": "ok"}
+
+    @app.get("/readyz", tags=["health"])
+    async def readyz() -> JSONResponse:
+        """Readiness probe — dependencies (vector store) are reachable."""
+        store = getattr(app.state, "store", None)
+        if store is None:
+            return JSONResponse({"status": "starting"}, status_code=503)
+        try:
+            await store.count()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("readiness.failed", error=str(exc))
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+        return JSONResponse({"status": "ready"})
 
     return app
 
