@@ -1,0 +1,26 @@
+{
+  "requests": 2000,
+  "unique_ratio": 0.25,
+  "hits": 1475,
+  "misses": 525,
+  "hit_rate": 0.7375,
+  "cost_usd_without_cache": 4.2,
+  "cost_usd_with_cache": 1.1025,
+  "cost_reduction_pct": 73.8,
+  "tokens_saved_estimate": 1032500,
+  "latency_ms": {
+    "baseline": {
+      "p50": 649.3,
+      "p95": 979.4,
+      "p99": 1125.6
+    },
+    "with_cache": {
+      "p50": 4.5,
+      "p95": 826.6,
+      "p99": 982.3
+    },
+    "p95_reduction_pct": 15.6,
+    "p50_reduction_pct": 99.3
+  },
+  "generated_at": "2026-06-26T15:29:59Z"
+}
