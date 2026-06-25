@@ -27,6 +27,7 @@ def settings():
         vector_backend="memory",
         completer_backend="echo",
         validation_sample_rate=0.0,
+        rate_limit_enabled=False,
         similarity_threshold=0.95,
         redis_url="redis://localhost:6379/15",
     )

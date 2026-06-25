@@ -23,6 +23,7 @@ from app.cache.semantic_cache import SemanticCache
 from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware
 from app.analytics.near_miss import NearMissTracker
 from app.analytics.validation import CacheValidator
 from app.embeddings import build_embedding_service
@@ -119,9 +120,13 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        # Graceful shutdown: drain upstream/HTTP clients and the datastore.
+        logger.info("service.shutdown.begin")
+        if hasattr(completer, "aclose"):
+            await completer.aclose()
         await embeddings.aclose()
         await store.aclose()
-        logger.info("service.shutdown")
+        logger.info("service.shutdown.complete")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -136,6 +141,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    # Middleware is applied bottom-up; add rate limiting first so correlation-id
+    # logging wraps (and tags) even rejected requests.
+    if settings.rate_limit_enabled:
+        app.add_middleware(
+            RateLimitMiddleware,
+            rate_per_sec=settings.rate_limit_rps,
+            exempt_paths=("/healthz", "/readyz", "/metrics"),
+        )
+    app.add_middleware(CorrelationIdMiddleware)
+
     app.include_router(chat_router)
     app.include_router(cache_router)
     app.include_router(analytics_router)
