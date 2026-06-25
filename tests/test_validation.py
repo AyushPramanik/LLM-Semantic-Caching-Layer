@@ -17,7 +17,9 @@ from app.models.chat import (
 def _response(text: str) -> ChatCompletionResponse:
     return ChatCompletionResponse(
         model="gpt-4o-mini",
-        choices=[ChatCompletionChoice(index=0, message=ChatMessage(role="assistant", content=text))],
+        choices=[
+            ChatCompletionChoice(index=0, message=ChatMessage(role="assistant", content=text))
+        ],
     )
 
 

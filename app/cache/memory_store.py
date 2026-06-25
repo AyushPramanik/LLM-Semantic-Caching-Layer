@@ -75,9 +75,7 @@ class InMemoryVectorStore(VectorStore):
                 return False
             if system_prompt_hash is not None and entry.system_prompt_hash != system_prompt_hash:
                 return False
-            if tag is not None and tag not in entry.tags:
-                return False
-            return True
+            return tag is None or tag in entry.tags
 
         to_delete = [eid for eid, entry in self._entries.items() if matches(entry)]
         for entry_id in to_delete:

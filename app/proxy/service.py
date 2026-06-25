@@ -14,6 +14,7 @@ service stays focused and the policy layers (Phase 3) can evolve independently.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -91,15 +92,15 @@ class ProxyService:
         self._near_miss = near_miss_tracker
         self._validator = validator
 
-    def _maybe_validate(self, request: ChatCompletionRequest, cached: ChatCompletionResponse) -> None:
+    def _maybe_validate(
+        self, request: ChatCompletionRequest, cached: ChatCompletionResponse
+    ) -> None:
         """Fire-and-forget shadow replay of a sampled cache hit (off hot path)."""
         if self._validator is None or not self._validator.should_validate():
             return
-        try:
+        # No running loop (e.g. sync context) — skip rather than block.
+        with contextlib.suppress(RuntimeError):
             asyncio.create_task(self._safe_validate(request, cached))
-        except RuntimeError:
-            # No running loop (e.g. sync context) — skip rather than block.
-            pass
 
     async def _safe_validate(self, request, cached) -> None:
         try:

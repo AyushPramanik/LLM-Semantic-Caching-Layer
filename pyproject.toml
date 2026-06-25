@@ -70,7 +70,13 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
-ignore = ["B008"]
+# B008: FastAPI Depends() in defaults. UP042: str-Enum is intentional for
+# pydantic compatibility. B027: empty async hooks are optional override points.
+ignore = ["B008", "UP042", "B027"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test helpers use dict(...) for readable keyword construction.
+"tests/**" = ["C408"]
 
 [tool.mypy]
 python_version = "3.11"

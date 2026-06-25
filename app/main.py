@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app import __version__
+from app.analytics.near_miss import NearMissTracker
+from app.analytics.validation import CacheValidator
 from app.api.analytics import router as analytics_router
 from app.api.cache import router as cache_router
 from app.api.chat import router as chat_router
@@ -24,8 +26,6 @@ from app.cache.store import RedisVectorStore, VectorStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware
-from app.analytics.near_miss import NearMissTracker
-from app.analytics.validation import CacheValidator
 from app.embeddings import build_embedding_service
 from app.monitoring.metrics import CacheMetrics
 from app.policies import (
@@ -35,6 +35,7 @@ from app.policies import (
     build_ttl_policy,
 )
 from app.providers import build_router
+from app.providers.base import ProviderError
 from app.proxy.echo import EchoCompleter
 from app.proxy.service import Completer, ProxyService
 
@@ -151,6 +152,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             exempt_paths=("/healthz", "/readyz", "/metrics"),
         )
     app.add_middleware(CorrelationIdMiddleware)
+
+    @app.exception_handler(ProviderError)
+    async def _provider_error_handler(_request, exc: ProviderError) -> JSONResponse:
+        # Map upstream failures to a clean, OpenAI-style error envelope. 5xx
+        # provider errors are reported as 502 (bad gateway); 4xx pass through.
+        status = exc.status_code if exc.status_code < 500 else 502
+        return JSONResponse(
+            {"error": {"message": str(exc), "type": "provider_error", "provider": exc.provider}},
+            status_code=status,
+        )
 
     app.include_router(chat_router)
     app.include_router(cache_router)

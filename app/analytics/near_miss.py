@@ -42,7 +42,9 @@ class NearMissReport(BaseModel):
 
 
 class NearMissTracker:
-    def __init__(self, *, window: float = 0.05, capacity: int = 1000, min_samples: int = 20) -> None:
+    def __init__(
+        self, *, window: float = 0.05, capacity: int = 1000, min_samples: int = 20
+    ) -> None:
         self._window = window
         self._min_samples = min_samples
         self._events: deque[NearMiss] = deque(maxlen=capacity)

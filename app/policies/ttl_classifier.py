@@ -83,7 +83,8 @@ class TtlClassifier:
 
         for pattern in self._no_cache_re:
             if pattern.search(text):
-                return TtlDecision(TtlClass.NO_CACHE, 0, f"matched volatile pattern '{pattern.pattern}'")
+                reason = f"matched volatile pattern '{pattern.pattern}'"
+                return TtlDecision(TtlClass.NO_CACHE, 0, reason)
 
         if any(keyword in text for keyword in _SHORT_KEYWORDS):
             return TtlDecision(TtlClass.SHORT, self._short_ttl, "time-sensitive keyword")

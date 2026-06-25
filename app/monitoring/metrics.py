@@ -73,7 +73,8 @@ class CacheMetrics:
         self.cache_hits = Counter(
             "cache_hits_total", "Total cache hits", ["provider", "model"], registry=self.registry)
         self.cache_misses = Counter(
-            "cache_misses_total", "Total cache misses", ["provider", "model"], registry=self.registry)
+            "cache_misses_total", "Total cache misses", ["provider", "model"],
+            registry=self.registry)
         self.hit_rate = Gauge(
             "cache_hit_rate", "Rolling cache hit rate", registry=self.registry)
         self.lookup_latency = Histogram(

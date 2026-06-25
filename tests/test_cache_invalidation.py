@@ -34,7 +34,8 @@ def test_invalidate_by_tag(client):
     # ttl:long is auto-tagged by the policy; "docs" is caller-supplied.
     resp = client.delete("/cache/tag/docs")
     assert resp.json()["invalidated"] == 1
-    assert _post(client, "what is a database index", tags=["docs"]).headers["X-Cache-Status"] == "MISS"
+    again = _post(client, "what is a database index", tags=["docs"])
+    assert again.headers["X-Cache-Status"] == "MISS"
 
 
 def test_invalidate_all(client):

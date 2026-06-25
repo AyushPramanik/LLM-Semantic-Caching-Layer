@@ -40,7 +40,10 @@ def response_to_sse(response: ChatCompletionResponse) -> list[bytes]:
         "created": response.created,
         "model": response.model,
     }
-    role_chunk = {**base, "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]}
+    role_chunk = {
+        **base,
+        "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+    }
     content = response.first_text()
     content_chunk = {
         **base,

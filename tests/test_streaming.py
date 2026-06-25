@@ -7,14 +7,15 @@ import pytest
 from app.cache.memory_store import InMemoryVectorStore
 from app.cache.semantic_cache import CacheStatus, SemanticCache
 from app.embeddings.fake import FakeEmbeddingService
-from app.models.chat import ChatCompletionRequest, ChatMessage
-from app.proxy.service import ProxyService
-from app.proxy.streaming import StreamAssembler, response_to_sse
 from app.models.chat import (
     ChatCompletionChoice,
+    ChatCompletionRequest,
     ChatCompletionResponse,
+    ChatMessage,
     CompletionUsage,
 )
+from app.proxy.service import ProxyService
+from app.proxy.streaming import StreamAssembler, response_to_sse
 
 
 def _full_response(text: str = "hello world") -> ChatCompletionResponse:

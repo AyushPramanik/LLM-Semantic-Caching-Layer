@@ -73,7 +73,9 @@ class AnthropicProvider(ChatProvider):
 
     def _to_openai_response(self, body: dict[str, Any], model: str) -> ChatCompletionResponse:
         text = "".join(
-            block.get("text", "") for block in body.get("content", []) if block.get("type") == "text"
+            block.get("text", "")
+            for block in body.get("content", [])
+            if block.get("type") == "text"
         )
         usage = body.get("usage", {})
         return ChatCompletionResponse(
